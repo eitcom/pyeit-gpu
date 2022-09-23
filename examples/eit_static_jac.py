@@ -4,6 +4,8 @@
 # Distributed under the (new) BSD License. See LICENSE.txt for more info.
 from __future__ import absolute_import, division, print_function
 
+import datetime
+
 import matplotlib.pyplot as plt
 import cupy as cp
 import pyeit.eit.jac as jac
@@ -47,7 +49,10 @@ ax.set_title(r"$\Delta$ Conductivities")
 eit = jac.JAC(mesh_obj, protocol_obj)
 eit.setup(p=0.25, lamb=1.0, method="lm")
 # lamb = lamb * lamb_decay
+
+start_time = datetime.datetime.now()
 ds = eit.gn(v1, lamb_decay=0.1, lamb_min=1e-5, maxiter=5, verbose=True)
+print("Calculation time:", datetime.datetime.now() - start_time)
 
 # plot
 fig, ax = plt.subplots(figsize=(9, 6))
