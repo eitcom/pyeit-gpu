@@ -9,7 +9,7 @@ writing your own reconstruction algorithms.
 # Distributed under the (new) BSD License. See LICENSE.txt for more info.
 from __future__ import absolute_import, division, print_function
 from abc import ABC, abstractmethod
-import numpy as np
+import cupy as cp
 from pyeit.eit.protocol import PyEITProtocol
 from pyeit.mesh import PyEITMesh
 
@@ -77,7 +77,7 @@ class EitBase(ABC):
         """
 
     @abstractmethod
-    def _compute_h(self) -> np.ndarray:
+    def _compute_h(self) -> cp.ndarray:
         """
         Compute H matrix for solving inv problem
 
@@ -92,11 +92,11 @@ class EitBase(ABC):
 
     def solve(
         self,
-        v1: np.ndarray,
-        v0: np.ndarray,
+        v1: cp.ndarray,
+        v0: cp.ndarray,
         normalize: bool = False,
         log_scale: bool = False,
-    ) -> np.ndarray:
+    ) -> cp.ndarray:
         """
         Dynamic imaging (conductivities imaging)
 
@@ -123,12 +123,12 @@ class EitBase(ABC):
         """
         self._check_solver_is_ready()
         dv = self._normalize(v1, v0) if normalize else v1 - v0
-        ds = -np.dot(self.H, dv.transpose())  # s = -Hv
+        ds = -cp.dot(self.H, dv.transpose())  # s = -Hv
         if log_scale:
-            ds = np.exp(ds) - 1.0
+            ds = cp.exp(ds) - 1.0
         return ds
 
-    def map(self, dv: np.ndarray) -> np.ndarray:
+    def map(self, dv: cp.ndarray) -> cp.ndarray:
         """
         (NOT USED, Deprecated?) simple mat using projection matrix
 
@@ -150,7 +150,7 @@ class EitBase(ABC):
             -H*dv
         """
         self._check_solver_is_ready()
-        return -np.dot(self.H, dv.transpose())
+        return -cp.dot(self.H, dv.transpose())
 
     def _check_solver_is_ready(self) -> None:
         """
@@ -167,7 +167,7 @@ class EitBase(ABC):
             msg = "User must first run {type(self).__name__}.setup() before imaging."
             raise SolverNotReadyError(msg)
 
-    def _normalize(self, v1: np.ndarray, v0: np.ndarray) -> np.ndarray:
+    def _normalize(self, v1: cp.ndarray, v0: cp.ndarray) -> cp.ndarray:
         """
         Normalize current frame using the amplitude of the reference frame.
         Boundary measurements v are complex-valued, we can use the real part of v,
@@ -185,4 +185,4 @@ class EitBase(ABC):
         np.ndarray
             Normalized current frame difference dv
         """
-        return (v1 - v0) / np.abs(v0)
+        return (v1 - v0) / cp.abs(v0)

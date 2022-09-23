@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Union, List
 
-import numpy as np
+import cupy as cp
 
 from . import shape
 from .distmesh import build
@@ -39,16 +39,16 @@ class PyEITMesh:
         reference node. ref_node should not be on electrodes, default 0.
     """
 
-    node: np.ndarray
-    element: np.ndarray
-    perm: Union[int, float, np.ndarray] = None
-    el_pos: np.ndarray = np.arange(16)
+    node: cp.ndarray
+    element: cp.ndarray
+    perm: Union[int, float, cp.ndarray] = None
+    el_pos: cp.ndarray = cp.arange(16)
     ref_node: int = 0
 
     def __post_init__(self) -> None:
         """Checking of the inputs"""
-        self.element = self._check_element(self.element)
-        self.node = self._check_node(self.node)
+        self.element = self._check_element(cp.asarray(self.element))
+        self.node = self._check_node(cp.asarray(self.node))
         self.perm = self.get_valid_perm(self.perm)
         self.ref_node = self._check_ref_node(self.ref_node)
 
@@ -72,20 +72,20 @@ class PyEITMesh:
         print(f"{text_2D_3D} mesh status:")
         print(f"{self.n_nodes} nodes, {self.n_elems} elements")
 
-    def _check_element(self, element: np.ndarray) -> np.ndarray:
+    def _check_element(self, element: cp.ndarray) -> cp.ndarray:
         """
         Check nodes element
         return nodes [x,y,z]
 
         Parameters
         ----------
-        node : np.ndarray, optional
+        node : cp.ndarray, optional
             nodes [x,y] ; shape (n_elem,3)
             nodes [x,y,z] ; shape (n_nodes,4)
 
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             nodes [x,y,z] ; shape (n_nodes,3)
 
         Raises
@@ -93,7 +93,7 @@ class PyEITMesh:
         TypeError
             raised if perm is not ndarray and of shape (n_tri,)
         """
-        if not isinstance(element, np.ndarray):
+        if not isinstance(element, cp.ndarray):
             raise TypeError(f"Wrong type of {element=}, expected an ndarray")
         if element.ndim != 2:
             raise TypeError(
@@ -106,20 +106,20 @@ class PyEITMesh:
 
         return element
 
-    def _check_node(self, node: np.ndarray) -> np.ndarray:
+    def _check_node(self, node: cp.ndarray) -> cp.ndarray:
         """
         Check nodes shape
         return nodes [x,y,z]
 
         Parameters
         ----------
-        node : np.ndarray, optional
+        node : cp.ndarray, optional
             nodes [x,y] ; shape (n_nodes,2) (in that case z will be set 0)
             nodes [x,y,z] ; shape (n_nodes,3)
 
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             nodes [x,y,z] ; shape (n_nodes,3)
 
         Raises
@@ -127,7 +127,7 @@ class PyEITMesh:
         TypeError
             raised if perm is not ndarray and of shape (n_tri,)
         """
-        if not isinstance(node, np.ndarray):
+        if not isinstance(node, cp.ndarray):
             raise TypeError(f"Wrong type of {node=}, expected an ndarray")
         if node.ndim != 2:
             raise TypeError(
@@ -139,24 +139,24 @@ class PyEITMesh:
             )
         # convert nodes [x,y] to nodes [x,y,0]
         if node.shape[1] == 2:
-            node = np.hstack((node, np.zeros((node.shape[0], 1))))
+            node = cp.hstack((node, cp.zeros((node.shape[0], 1))))
 
         return node
 
-    def get_valid_perm(self, perm: Union[int, float, np.ndarray] = None) -> np.ndarray:
+    def get_valid_perm(self, perm: Union[int, float, cp.ndarray] = None) -> cp.ndarray:
         """
         Return a valid permittivity on element
 
         Parameters
         ----------
-        perm : Union[int, float, np.ndarray], optional
+        perm : Union[int, float, cp.ndarray], optional
             Permittivity on elements ; shape (n_elems,), by default `None`.
             If `None`, a uniform permittivity on elements with a value 1 will be used.
             If perm is int or float, uniform permittivity on elements will be used.
 
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             permittivity on elements ; shape (n_elems,)
 
         Raises
@@ -166,11 +166,11 @@ class PyEITMesh:
         """
 
         if perm is None:
-            return np.ones(self.n_elems, dtype=float)
+            return cp.ones(self.n_elems, dtype=float)
         elif isinstance(perm, (int, float)):
-            return np.ones(self.n_elems, dtype=float) * perm
+            return cp.ones(self.n_elems, dtype=float) * perm
 
-        if not isinstance(perm, np.ndarray) or perm.shape != (self.n_elems,):
+        if not isinstance(perm, cp.ndarray) or perm.shape != (self.n_elems,):
             raise TypeError(
                 f"Wrong type/shape of {perm=}, expected an ndarray; shape ({self.n_elems}, )"
             )
@@ -185,7 +185,7 @@ class PyEITMesh:
         ref : int, optional
             node number of reference node, by default 0
             If the choosen node is on electrode node, a node-list in
-            np.arange(0, len(el_pos)+1) will be checked iteratively until
+            cp.arange(0, len(el_pos)+1) will be checked iteratively until
             a non-electrode node is selected.
 
         returns
@@ -193,7 +193,7 @@ class PyEITMesh:
         int
             valid reference electrode node
         """
-        default_ref = np.setdiff1d(np.arange(len(self.el_pos) + 1), self.el_pos)[0]
+        default_ref = cp.setdiff1d(cp.arange(len(self.el_pos) + 1), self.el_pos)[0]
         return ref if ref not in self.el_pos else default_ref
         # assert ref < self.n_nodes
 
@@ -249,31 +249,31 @@ class PyEITMesh:
         return self.el_pos.shape[0]
 
     @property
-    def elem_centers(self) -> np.ndarray:
+    def elem_centers(self) -> cp.ndarray:
         """
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             center of the nodes [x,y,z]; shape (n_elems,3)
         """
-        return np.mean(self.node[self.element], axis=1)
+        return cp.mean(self.node[self.element], axis=1)
 
     @property
-    def is_3D(self) -> np.ndarray:
+    def is_3D(self) -> cp.ndarray:
         """
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             True if the mesh is a 3D mesh (use elements with 4 vertices)
         """
         return self.n_vertices == 4
 
     @property
-    def is_2D(self) -> np.ndarray:
+    def is_2D(self) -> cp.ndarray:
         """
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             True if the mesh is a 2D mesh (use elements with 3 vertices)
         """
         return self.n_vertices == 3
@@ -284,8 +284,8 @@ def create(
     fd: Callable = None,
     fh: Callable = shape.area_uniform,
     h0: float = 0.1,
-    p_fix: np.ndarray = None,
-    bbox: np.ndarray = None,
+    p_fix: cp.ndarray = None,
+    bbox: cp.ndarray = None,
 ) -> PyEITMesh:
     """
     Generating 2D/3D meshes using distmesh (pyEIT built-in)
@@ -315,12 +315,12 @@ def create(
 
     if bbox is None:
         if fd != shape.ball:
-            bbox = np.array([[-1, -1], [1, 1]])
+            bbox = cp.array([[-1, -1], [1, 1]])
         else:
             bbox = [[-1.2, -1.2, -1.2], [1.2, 1.2, 1.2]]
 
     # list is converted to Numpy array so we can use it then (calling shape method..)
-    bbox = np.array(bbox)
+    bbox = cp.array(bbox)
     n_dim = bbox.shape[1]  # bring dimension
 
     # infer dim
@@ -354,7 +354,7 @@ def create(
     # 2. check whether t is counter-clock-wise, otherwise reshape it
     t = check_order(p, t)
     # 3. generate electrodes, the same as p_fix (top n_el)
-    el_pos = np.arange(n_el)
+    el_pos = cp.arange(n_el)
     return PyEITMesh(element=t, node=p, perm=None, el_pos=el_pos, ref_node=0)
 
 
@@ -364,15 +364,15 @@ class PyEITAnomaly(ABC):
     Pyeit Anomaly for simulation purpose
     """
 
-    center: Union[np.ndarray, list]  # center of the anomaly
+    center: Union[cp.ndarray, list]  # center of the anomaly
     perm: float = 1.0  # permittivity of the anomaly
 
     def __post_init__(self):
         if isinstance(self.center, list):
-            self.center = np.array(self.center)
+            self.center = cp.array(self.center)
 
     @abstractmethod
-    def mask(self, pts: np.ndarray) -> np.ndarray:
+    def mask(self, pts: cp.ndarray) -> cp.ndarray:
         """
         Return mask corresponding to the pts contained in the Anomaly
         """
@@ -387,7 +387,7 @@ class PyEITAnomaly_Circle(PyEITAnomaly):
 
     r: float = 1.0  # radius of the circle
 
-    def mask(self, pts: np.ndarray) -> np.ndarray:
+    def mask(self, pts: cp.ndarray) -> cp.ndarray:
         pts = pts[:, :2].reshape((-1, 2))
         pc = self.center[:2].reshape((1, 2))
         return circle(pts, pc, self.r) < 0
@@ -401,7 +401,7 @@ class PyEITAnomaly_Ball(PyEITAnomaly):
 
     r: float = 1.0  # radius of the ball
 
-    def mask(self, pts: np.ndarray) -> np.ndarray:
+    def mask(self, pts: cp.ndarray) -> cp.ndarray:
         pts = pts.reshape((-1, 3))
         pc = self.center.reshape((1, 3))
         return ball(pts, pc, self.r) < 0
@@ -437,7 +437,7 @@ def set_perm(
     perm = mesh.perm.copy()
     # reset background if needed
     if background is not None:
-        perm = background * np.ones_like(mesh.perm)
+        perm = background * cp.ones_like(mesh.perm)
 
     # change dtype to 'complex' for complex-valued permittivity
     if anomaly is None:
@@ -447,7 +447,7 @@ def set_perm(
         anomaly = [anomaly]
 
     for an in anomaly:
-        if np.iscomplex(an.perm):
+        if cp.iscomplex(an.perm):
             perm = perm.astype("complex")
             break
 
@@ -470,7 +470,7 @@ def layer_circle(n_el: int = 16, n_fan: int = 8, n_layer: int = 8) -> PyEITMesh:
     """generate mesh on unit-circle"""
     model = MeshCircle(n_fan=n_fan, n_layer=n_layer, n_el=n_el)
     pts, tri, el_pos = model.create()
-    # perm = np.ones(tri.shape[0]) not need anymore as handled in PyEITMesh
+    # perm = cp.ones(tri.shape[0]) not need anymore as handled in PyEITMesh
     return PyEITMesh(element=tri, node=pts, perm=None, el_pos=el_pos)
 
 

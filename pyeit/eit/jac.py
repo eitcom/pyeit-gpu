@@ -8,8 +8,7 @@
 from __future__ import division, absolute_import, print_function, annotations
 
 from typing import Union
-import numpy as np
-import scipy.linalg as la
+import cupy as cp
 from .base import EitBase
 
 
@@ -21,7 +20,7 @@ class JAC(EitBase):
         p: float = 0.20,
         lamb: float = 0.001,
         method: str = "kotre",
-        perm: Union[int, float, np.ndarray] = None,
+        perm: Union[int, float, cp.ndarray] = None,
         jac_normalized: bool = False,
     ) -> None:
         """
@@ -57,8 +56,8 @@ class JAC(EitBase):
         self.is_ready = True
 
     def _compute_h(
-        self, jac: np.ndarray, p: float, lamb: float, method: str = "kotre"
-    ) -> np.ndarray:
+        self, jac: cp.ndarray, p: float, lamb: float, method: str = "kotre"
+    ) -> cp.ndarray:
         """
         Compute self.H matrix for JAC solver
 
@@ -85,24 +84,24 @@ class JAC(EitBase):
         np.ndarray
             H matrix, pseudo-inverse matrix of JAC
         """
-        j_w_j = np.dot(jac.transpose(), jac)
+        j_w_j = cp.dot(jac.transpose(), jac)
         if method == "kotre":
             # p=0   : noise distribute on the boundary ('dgn')
             # p=0.5 : noise distribute on the middle
             # p=1   : noise distribute on the center ('lm')
-            r_mat = np.diag(np.diag(j_w_j) ** p)
+            r_mat = cp.diag(cp.diag(j_w_j) ** p)
         elif method == "lm":
             # Marquardt–Levenberg, 'lm' for short
             # or can be called NOSER, DLS
-            r_mat = np.diag(np.diag(j_w_j))
+            r_mat = cp.diag(cp.diag(j_w_j))
         else:
             # Damped Gauss Newton, 'dgn' for short
-            r_mat = np.eye(jac.shape[1])
+            r_mat = cp.eye(jac.shape[1])
 
         # build H
-        return np.dot(la.inv(j_w_j + lamb * r_mat), jac.transpose())
+        return cp.dot(cp.linalg.inv(j_w_j + lamb * r_mat), jac.transpose())
 
-    def solve_gs(self, v1: np.ndarray, v0: np.ndarray) -> np.ndarray:
+    def solve_gs(self, v1: cp.ndarray, v0: cp.ndarray) -> cp.ndarray:
         """
         Solving by weighted frequency
 
@@ -124,14 +123,14 @@ class JAC(EitBase):
             complex-valued np.ndarray, changes of conductivities
         """
         self._check_solver_is_ready()
-        a = np.dot(v1, v0) / np.dot(v0, v0)
+        a = cp.dot(v1, v0) / cp.dot(v0, v0)
         dv = v1 - a * v0
         # return ds average epsilon on element
-        return -np.dot(self.H, dv.transpose())
+        return -cp.dot(self.H, dv.transpose())
 
     def jt_solve(
-        self, v1: np.ndarray, v0: np.ndarray, normalize: bool = True
-    ) -> np.ndarray:
+        self, v1: cp.ndarray, v0: cp.ndarray, normalize: bool = True
+    ) -> cp.ndarray:
         """
         a 'naive' back projection using the transpose of Jac.
         This scheme is the one published by kotre (1989), see note [1].
@@ -167,17 +166,17 @@ class JAC(EitBase):
         """
         self._check_solver_is_ready()
         if normalize:
-            dv = np.log(np.abs(v1) / np.abs(v0)) * np.sign(v0.real)
+            dv = cp.log(cp.abs(v1) / cp.abs(v0)) * cp.sign(v0.real)
         else:
-            dv = (v1 - v0) * np.sign(v0.real)
+            dv = (v1 - v0) * cp.sign(v0.real)
         # s_r = J^Tv_r
-        ds = -np.dot(self.J.conj().T, dv)
-        return np.exp(ds) - 1.0
+        ds = -cp.dot(self.J.conj().T, dv)
+        return cp.exp(ds) - 1.0
 
     def gn(
         self,
-        v: np.ndarray,
-        x0: Union[int, float, np.ndarray] = None,
+        v: cp.ndarray,
+        x0: Union[int, float, cp.ndarray] = None,
         maxiter: int = 1,
         gtol: float = 1e-4,
         p: float = None,
@@ -187,7 +186,7 @@ class JAC(EitBase):
         method: str = "kotre",
         verbose: bool = False,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> cp.ndarray:
         """
         Gaussian Newton Static Solver
         You can use a different p, lamb other than the default ones in setup
@@ -246,7 +245,7 @@ class JAC(EitBase):
             method = self.params["method"]
 
         # convergence test
-        x0_norm = np.linalg.norm(x0)
+        x0_norm = cp.linalg.norm(x0)
 
         for i in range(maxiter):
 
@@ -259,11 +258,11 @@ class JAC(EitBase):
             h_mat = self._compute_h(jac, p, lamb, method)
 
             # update
-            d_k = np.dot(h_mat, r0)
+            d_k = cp.dot(h_mat, r0)
             x0 = x0 - d_k
 
             # convergence test
-            c = np.linalg.norm(d_k) / x0_norm
+            c = cp.linalg.norm(d_k) / x0_norm
             if c < gtol:
                 break
 
@@ -276,7 +275,7 @@ class JAC(EitBase):
             lamb = max(lamb, lamb_min)
         return x0
 
-    def project(self, ds: np.ndarray) -> np.ndarray:
+    def project(self, ds: cp.ndarray) -> cp.ndarray:
         """
         Project ds using spatial difference filter (deprecated)
 
@@ -302,12 +301,12 @@ class JAC(EitBase):
         np.ndarray
         """
         d_mat = sar(self.mesh.element)
-        return np.dot(d_mat, ds)
+        return cp.dot(d_mat, ds)
 
 
 def h_matrix(
-    jac: np.ndarray, p: float, lamb: float, method: str = "kotre"
-) -> np.ndarray:
+    jac: cp.ndarray, p: float, lamb: float, method: str = "kotre"
+) -> cp.ndarray:
     """
     (NOT USED in JAC solver)
     JAC method of dynamic EIT solver:
@@ -329,26 +328,26 @@ def h_matrix(
     np.ndarray
         H matrix, pseudo-inverse matrix of JAC
     """
-    j_w_j = np.dot(jac.transpose(), jac)
+    j_w_j = cp.dot(jac.transpose(), jac)
     if method == "kotre":
         # see adler-dai-lionheart-2007
         # p=0   : noise distribute on the boundary ('dgn')
         # p=0.5 : noise distribute on the middle
         # p=1   : noise distribute on the center ('lm')
-        r_mat = np.diag(np.diag(j_w_j)) ** p
+        r_mat = cp.diag(cp.diag(j_w_j)) ** p
     elif method == "lm":
         # Marquardt–Levenberg, 'lm' for short
         # or can be called NOSER, DLS
-        r_mat = np.diag(np.diag(j_w_j))
+        r_mat = cp.diag(cp.diag(j_w_j))
     else:
         # Damped Gauss Newton, 'dgn' for short
-        r_mat = np.eye(jac.shape[1])
+        r_mat = cp.eye(jac.shape[1])
 
     # build H
-    return np.dot(la.inv(j_w_j + lamb * r_mat), jac.transpose())
+    return cp.dot(cp.linalg.inv(j_w_j + lamb * r_mat), jac.transpose())
 
 
-def sar(el2no: np.ndarray) -> np.ndarray:
+def sar(el2no: cp.ndarray) -> cp.ndarray:
     """
     Extract spatial difference matrix on the neighbors of each element
     in 2D fem using triangular mesh.
@@ -364,14 +363,14 @@ def sar(el2no: np.ndarray) -> np.ndarray:
         SAR matrix
     """
     ne = el2no.shape[0]
-    d_mat = np.eye(ne)
+    d_mat = cp.eye(ne)
     for i in range(ne):
         ei = el2no[i, :]
         #
-        i0 = np.argwhere(el2no == ei[0])[:, 0]
-        i1 = np.argwhere(el2no == ei[1])[:, 0]
-        i2 = np.argwhere(el2no == ei[2])[:, 0]
-        idx = np.unique(np.hstack([i0, i1, i2]))
+        i0 = cp.argwhere(el2no == ei[0])[:, 0]
+        i1 = cp.argwhere(el2no == ei[1])[:, 0]
+        i2 = cp.argwhere(el2no == ei[2])[:, 0]
+        idx = cp.unique(cp.hstack([i0, i1, i2]))
         # build row-i
         for j in idx:
             d_mat[i, j] = -1

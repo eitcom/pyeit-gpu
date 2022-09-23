@@ -5,7 +5,7 @@
 from __future__ import absolute_import, division, print_function
 
 import matplotlib.pyplot as plt
-import numpy as np
+import cupy as cp
 import pyeit.eit.jac as jac
 import pyeit.eit.protocol as protocol
 from pyeit.eit.fem import EITForward
@@ -25,8 +25,8 @@ anomaly = [
 # background changed to values other than 1.0 requires more iterations
 mesh_new = set_perm(mesh_obj, anomaly=anomaly, background=2.0)
 # extract node, element, perm
-xx, yy = mesh_obj.node[:, 0], mesh_obj.node[:, 1]
-tri = mesh_obj.element
+xx, yy = mesh_obj.node[:, 0].get(), mesh_obj.node[:, 1].get()
+tri = mesh_obj.element.get()
 perm = mesh_new.perm
 
 # %% calculate simulated data
@@ -36,8 +36,8 @@ v1 = fwd.solve_eit(perm=mesh_new.perm)
 
 # plot
 fig, ax = plt.subplots(figsize=(9, 6))
-im = ax.tripcolor(xx, yy, tri, np.real(perm), cmap="viridis")
-for el in mesh_obj.el_pos:
+im = ax.tripcolor(xx, yy, tri, cp.real(perm).get(), cmap="viridis")
+for el in mesh_obj.el_pos.get():
     ax.plot(xx[el], yy[el], "ro")
 ax.axis("equal")
 ax.set_title(r"$\Delta$ Conductivities")
@@ -47,11 +47,11 @@ ax.set_title(r"$\Delta$ Conductivities")
 eit = jac.JAC(mesh_obj, protocol_obj)
 eit.setup(p=0.25, lamb=1.0, method="lm")
 # lamb = lamb * lamb_decay
-ds = eit.gn(v1, lamb_decay=0.1, lamb_min=1e-5, maxiter=20, verbose=True)
+ds = eit.gn(v1, lamb_decay=0.1, lamb_min=1e-5, maxiter=5, verbose=True)
 
 # plot
 fig, ax = plt.subplots(figsize=(9, 6))
-im = ax.tripcolor(xx, yy, tri, np.real(ds), alpha=1.0, cmap="viridis")
+im = ax.tripcolor(xx, yy, tri, cp.real(ds).get(), alpha=1.0, cmap="viridis")
 ax.axis("equal")
 ax.set_title("Conductivities Reconstructed")
 fig.colorbar(im)

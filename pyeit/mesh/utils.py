@@ -5,8 +5,8 @@
 # Distributed under the (new) BSD License. See LICENSE.txt for more info.
 from __future__ import division, absolute_import, print_function
 
-import numpy as np
-import scipy.linalg as la
+import cupy as cp
+import cupyx.scipy.linalg as la
 
 
 def dist(p):
@@ -27,9 +27,9 @@ def dist(p):
         distances of points to origin
     """
     if p.ndim == 1:
-        d = np.sqrt(np.sum(p**2))
+        d = cp.sqrt(cp.sum(p**2))
     else:
-        d = np.sqrt(np.sum(p**2, axis=1))
+        d = cp.sqrt(cp.sum(p**2, axis=1))
 
     return d
 
@@ -68,30 +68,30 @@ def edge_grad(p, fd, h0=1.0):
 
         you should specify h0 according to your actual mesh size
     """
-    # d_eps = np.sqrt(np.finfo(float).eps)*h0
-    # d_eps = np.sqrt(np.finfo(float).eps)
+    # d_eps = cp.sqrt(cp.finfo(float).eps)*h0
+    # d_eps = cp.sqrt(cp.finfo(float).eps)
     d_eps = 1e-8 * h0
 
     # get dimensions
-    if np.ndim(p) == 1:
-        p = p[:, np.newaxis]
+    if cp.ndim(p) == 1:
+        p = p[:, cp.newaxis]
 
     # distance
     d = fd(p)
 
     # calculate the gradient of each axis
     ndim = p.shape[1]
-    pts_xyz = np.repeat(p, ndim, axis=0)
-    delta_xyz = np.repeat([np.eye(ndim)], p.shape[0], axis=0).reshape(-1, ndim)
+    pts_xyz = cp.repeat(p, ndim, axis=0)
+    delta_xyz = cp.repeat(cp.array([cp.eye(ndim)]), p.shape[0], axis=0).reshape(-1, ndim)
     deps_xyz = d_eps * delta_xyz
-    g_xyz = (fd(pts_xyz + deps_xyz) - np.repeat(d, ndim, axis=0)) / d_eps
+    g_xyz = (fd(pts_xyz + deps_xyz) - cp.repeat(d, ndim, axis=0)) / d_eps
 
     # normalize gradient, avoid divide by zero
     g = g_xyz.reshape(-1, ndim)
-    g2 = np.sum(g**2, axis=1)
+    g2 = cp.sum(g**2, axis=1)
 
     # move unit
-    g_num = g / g2[:, np.newaxis] * d[:, np.newaxis]
+    g_num = g / g2[:, cp.newaxis] * d[:, cp.newaxis]
 
     return g_num
 
@@ -109,7 +109,7 @@ def edge_list(tri):
         triangles list
     """
     bars = tri[:, [[0, 1], [1, 2], [2, 0]]].reshape((-1, 2))
-    bars = np.sort(bars, axis=1)
+    bars = cp.sort(bars, axis=1)
     bars = bars.view("i, i")
     n = bars.shape[0]
 
@@ -124,7 +124,7 @@ def edge_list(tri):
                 ix[i], ix[j] = False, False
                 break
 
-    return bars[np.array(ix)].view("i")
+    return bars[cp.array(ix)].view("i")
 
 
 def check_ccw(no2xy, el2no):
@@ -133,7 +133,7 @@ def check_ccw(no2xy, el2no):
     """
     xys = no2xy[el2no]
     a = [tri_area(xy) > 0 for xy in xys]
-    return np.all(a)
+    return cp.all(a)
 
 
 def check_order(no2xy, el2no):
@@ -158,7 +158,7 @@ def check_order(no2xy, el2no):
     -----
     tetrahedron should be parsed that the sign of volume is [1, -1, 1, -1]
     """
-    el_num, n_vertices = np.shape(el2no)
+    el_num, n_vertices = cp.shape(el2no)
     # select ae function
     if n_vertices == 3:
         _fn = tri_area
@@ -191,7 +191,7 @@ def tri_area(xy):
         area of this element
     """
     s = xy[[2, 0]] - xy[[1, 2]]
-    a_tot = 0.50 * la.det(s)
+    a_tot = 0.50 * cp.linalg.det(s)
     # (should be positive if tri-points are counter-clockwise)
     return a_tot
 
@@ -199,28 +199,28 @@ def tri_area(xy):
 def tet_volume(xyz):
     """calculate the volume of tetrahedron"""
     s = xyz[[2, 3, 0]] - xyz[[1, 2, 3]]
-    v_tot = (1.0 / 6.0) * la.det(s)
+    v_tot = (1.0 / 6.0) * cp.linalg.det(s)
     return v_tot
 
 
 def to_polar(xy, shift=True, sort=True):
     vec = xy
     if shift:
-        pc = np.median(xy, axis=0)
+        pc = cp.median(xy, axis=0)
         print(pc)
         vec = vec - pc
-    dist = np.sqrt(np.sum(vec**2, axis=1))
-    deg = np.rad2deg(np.arctan2(vec[:, 1], vec[:, 0]))
+    dist = cp.sqrt(cp.sum(vec**2, axis=1))
+    deg = cp.rad2deg(cp.arctan2(vec[:, 1], vec[:, 0]))
     deg = deg % 360
     if sort:
-        ind = np.argsort(deg)
+        ind = cp.argsort(deg)
         dist, deg = dist[ind], deg[ind]
     return dist, deg
 
 
 def to_xy(dist, deg):
-    x = dist * np.cos(np.deg2rad(deg))
-    y = dist * np.sin(np.deg2rad(deg))
+    x = dist * cp.cos(cp.deg2rad(deg))
+    y = dist * cp.sin(cp.deg2rad(deg))
     return x, y
 
 
@@ -229,9 +229,9 @@ if __name__ == "__main__":
     def fd_test(p):
         """unit circle/ball"""
         if len(p.shape) == 1:
-            d = np.sqrt(np.sum(p**2)) - 1.0
+            d = cp.sqrt(cp.sum(p**2)) - 1.0
         else:
-            d = np.sqrt(np.sum(p**2, axis=1)) - 1.0
+            d = cp.sqrt(cp.sum(p**2, axis=1)) - 1.0
 
         return d
 

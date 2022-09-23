@@ -5,7 +5,7 @@
 # Distributed under the (new) BSD License. See LICENSE.txt for more info.
 from __future__ import division, absolute_import, print_function
 
-import numpy as np
+import cupy as cp
 
 from .utils import dist, edge_project
 from shapely.geometry import Point
@@ -36,7 +36,7 @@ def circle(pts, pc=None, r=1.0):
     """
     if pc is None:
         pc = [0, 0]
-    return dist(pts - pc) - r
+    return dist(pts - cp.asarray(pc)) - r
 
 
 def ellipse(pts, pc=None, ab=None):
@@ -105,11 +105,11 @@ def rectangle0(pts, p1=None, p2=None):
     if p2 is None:
         p2 = [1, 1]
     if pts.ndim == 1:
-        pts = pts[np.newaxis]
+        pts = pts[cp.newaxis]
     pd_left = [-min(row) for row in pts - p1]
     pd_right = [max(row) for row in pts - p2]
 
-    return np.maximum(pd_left, pd_right)
+    return cp.maximum(pd_left, pd_right)
 
 
 def rectangle(pts, p1=None, p2=None):
@@ -124,7 +124,7 @@ def rectangle(pts, p1=None, p2=None):
     if p2 is None:
         p2 = [1, 1]
     if pts.ndim == 1:
-        pts = pts[np.newaxis]
+        pts = pts[cp.newaxis]
 
     d1x = -(pts[:, 0] - p1[0])
     d2x = pts[:, 0] - p2[0]
@@ -132,9 +132,9 @@ def rectangle(pts, p1=None, p2=None):
     d2y = pts[:, 1] - p2[1]
 
     # find interior points (d < 0)
-    dx = np.maximum(d1x, d2x)
-    dy = np.maximum(d1y, d2y)
-    d = np.maximum(dx, dy)
+    dx = cp.maximum(d1x, d2x)
+    dy = cp.maximum(d1y, d2y)
+    d = cp.maximum(dx, dy)
 
     # smoothed corner distance function
     ix_left = d1x > 0
@@ -143,14 +143,14 @@ def rectangle(pts, p1=None, p2=None):
     iy_above = d2y > 0
 
     # 1, 2, 3, 4 Quadrant outside-points smooth distance
-    ix1 = np.logical_and(ix_right, iy_above)
-    d[ix1] = np.sqrt(d2x[ix1] ** 2 + d2y[ix1] ** 2)
-    ix2 = np.logical_and(ix_left, iy_above)
-    d[ix2] = np.sqrt(d1x[ix2] ** 2 + d2y[ix2] ** 2)
-    ix3 = np.logical_and(ix_left, iy_below)
-    d[ix3] = np.sqrt(d1x[ix3] ** 2 + d1y[ix3] ** 2)
-    ix4 = np.logical_and(ix_right, iy_below)
-    d[ix4] = np.sqrt(d2x[ix4] ** 2 + d1y[ix4] ** 2)
+    ix1 = cp.logical_and(ix_right, iy_above)
+    d[ix1] = cp.sqrt(d2x[ix1] ** 2 + d2y[ix1] ** 2)
+    ix2 = cp.logical_and(ix_left, iy_above)
+    d[ix2] = cp.sqrt(d1x[ix2] ** 2 + d2y[ix2] ** 2)
+    ix3 = cp.logical_and(ix_left, iy_below)
+    d[ix3] = cp.sqrt(d1x[ix3] ** 2 + d1y[ix3] ** 2)
+    ix4 = cp.logical_and(ix_right, iy_below)
+    d[ix4] = cp.sqrt(d2x[ix4] ** 2 + d1y[ix4] ** 2)
 
     return d
 
@@ -177,14 +177,14 @@ def fix_points_fd(fd, n_el=16, pc=None):
 
     # initialize points
     r = 10.0
-    theta = 2.0 * np.pi * np.arange(n_el) / float(n_el)
+    theta = 2.0 * cp.pi * cp.arange(n_el) / float(n_el)
     # add offset of theta
     # theta += theta[1] / 2.0
-    p_fix = [[-r * np.cos(th), r * np.sin(th)] for th in theta]
-    pts = np.array(p_fix) + pc
+    p_fix = [[-r * cp.cos(th), r * cp.sin(th)] for th in theta]
+    pts = cp.array(p_fix) + cp.asarray(pc)
 
     # project back on edges
-    pts_new = np.inf * np.ones_like(pts)
+    pts_new = cp.inf * cp.ones_like(pts)
     c = False
     d_eps = 0.1
     max_iter = 10
@@ -194,10 +194,10 @@ def fix_points_fd(fd, n_el=16, pc=None):
         pts_new = edge_project(pts, fd)
         # project on rays
         r = dist(pts_new)
-        pts_new = [[-ri * np.cos(ti), ri * np.sin(ti)] for ri, ti in zip(r, theta)]
-        pts_new = np.array(pts_new)
+        pts_new = [[-ri * cp.cos(ti), ri * cp.sin(ti)] for ri, ti in zip(r, theta)]
+        pts_new = cp.array(pts_new)
         # check convergence
-        c = np.sum(dist(pts_new - pts)) < d_eps or niter > max_iter
+        c = cp.sum(dist(pts_new - pts)) < d_eps or niter > max_iter
         pts = pts_new
         niter += 1
     return pts_new
@@ -224,10 +224,10 @@ def fix_points_circle(pc=None, offset=0, r=1.0, ppl=16):
     if pc is None:
         pc = [0, 0]
 
-    delta_theta = 2.0 * np.pi / float(ppl)
-    theta = np.arange(ppl) * delta_theta + delta_theta * offset
-    p_fix = [[-r * np.cos(th), r * np.sin(th)] for th in theta]
-    return np.array(p_fix) + pc
+    delta_theta = 2.0 * cp.pi / float(ppl)
+    theta = cp.arange(ppl) * delta_theta + delta_theta * offset
+    p_fix = [[-r * cp.cos(th), r * cp.sin(th)] for th in theta]
+    return cp.array(p_fix) + pc
 
 
 def fix_points_ball(pc=None, r=1.0, z=0.0, n_el=16):
@@ -253,10 +253,10 @@ def fix_points_ball(pc=None, r=1.0, z=0.0, n_el=16):
     if pc is None:
         pc = [0, 0, 0]
 
-    ry = np.sqrt(r**2 - z**2)
-    theta = 2.0 * np.pi * np.arange(n_el) / float(n_el)
-    p_fix = [[ry * np.sin(th), ry * np.cos(th), z] for th in theta]
-    return np.array(p_fix) + pc
+    ry = cp.sqrt(r**2 - z**2)
+    theta = 2.0 * cp.pi * cp.arange(n_el) / float(n_el)
+    p_fix = [[ry * cp.sin(th), ry * cp.cos(th), z] for th in theta]
+    return cp.array(p_fix) + pc
 
 
 def dist_diff(d1, d2):
@@ -278,7 +278,7 @@ def dist_diff(d1, d2):
     boundary is denoted by d=0
     copied and modified from https://github.com/ckhroulev/py_distmesh2d
     """
-    return np.maximum(d1, -d2)
+    return cp.maximum(d1, -d2)
 
 
 def dist_intersect(d1, d2):
@@ -299,7 +299,7 @@ def dist_intersect(d1, d2):
     boundary is denoted by d=0
     copied and modified from https://github.com/ckhroulev/py_distmesh2d
     """
-    return np.maximum(d1, d2)
+    return cp.maximum(d1, d2)
 
 
 def dist_union(d1, d2):
@@ -320,7 +320,7 @@ def dist_union(d1, d2):
     boundary is denoted by d=0
     copied and modified from https://github.com/ckhroulev/py_distmesh2d
     """
-    return np.minimum(d1, d2)
+    return cp.minimum(d1, d2)
 
 
 def area_uniform(p):
@@ -337,7 +337,7 @@ def area_uniform(p):
         ones
 
     """
-    return np.ones(p.shape[0])
+    return cp.ones(p.shape[0])
 
 
 def lshape(pts):
@@ -347,7 +347,7 @@ def lshape(pts):
     )
 
 
-lshape_pfix = np.array(
+lshape_pfix = cp.array(
     [
         [1, 0],
         [1, -1],
@@ -366,7 +366,7 @@ def fd_polygon(poly, pts):
     pts_ = [Point(p) for p in pts]
     # calculate signed distance
     dist = [poly.exterior.distance(p) for p in pts_]
-    sign = np.sign([-int(poly.contains(p)) + 0.5 for p in pts_])
+    sign = cp.sign([-int(poly.contains(p)) + 0.5 for p in pts_])
 
     return sign * dist
 
@@ -434,7 +434,7 @@ def thorax(pts):
     return fd_polygon(poly_obj, pts)
 
 
-thorax_pfix = np.array(
+thorax_pfix = cp.array(
     [
         (-0.098, -0.6463),
         (-0.4181, -0.6074),
@@ -457,7 +457,7 @@ thorax_pfix = np.array(
 
 
 head_symm_poly = (
-    np.array(
+    cp.array(
         [
             [197, 0],
             [188, 43],
@@ -496,7 +496,7 @@ head_symm_poly = (
     / 255.0
 )
 
-head_symm_pfix = np.array(head_symm_poly[::-2])
+head_symm_pfix = cp.array(head_symm_poly[::-2])
 
 
 def head_symm(pts):
