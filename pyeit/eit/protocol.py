@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function, annotations
 from dataclasses import dataclass
 from typing import Union, List
 
+import cupy as cp
 import numpy as np
 
 
@@ -18,17 +19,17 @@ class PyEITProtocol:
 
     Parameters
     ----------
-    ex_mat: np.ndarray
+    ex_mat: cp.ndarray
         excitation matrix (pairwise)
-    meas_mat: np.ndarray
+    meas_mat: cp.ndarray
         measurement matrix (differential pairs)
-    keep_ba: np.ndarray
+    keep_ba: cp.ndarray
         boolean array index for keeping measurements
     """
 
-    ex_mat: np.ndarray
-    meas_mat: np.ndarray
-    keep_ba: np.ndarray
+    ex_mat: cp.ndarray
+    meas_mat: cp.ndarray
+    keep_ba: cp.ndarray
 
     def __post_init__(self) -> None:
         """Checking of the inputs"""
@@ -36,43 +37,43 @@ class PyEITProtocol:
         self.meas_mat = self._check_meas_mat(self.meas_mat)
         self.keep_ba = self._check_keep_mat(self.keep_ba)
 
-    def _check_ex_mat(self, ex_mat: np.ndarray) -> np.ndarray:
+    def _check_ex_mat(self, ex_mat: cp.ndarray) -> cp.ndarray:
         """
         Check/init stimulation
 
         Parameters
         ----------
-        ex_mat : np.ndarray
+        ex_mat : cp.ndarray
             stimulation/excitation matrix, of shape (n_exc, 2).
             If single stimulation (ex_line) is passed only a list of length 2
-            and np.ndarray of size 2 will be treated.
+            and cp.ndarray of size 2 will be treated.
 
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             stimulation matrix
 
         Raises
         ------
         TypeError
-            Only accept, list of length 2, np.ndarray of size 2,
-            or np.ndarray of shape (n_exc, 2)
+            Only accept, list of length 2, cp.ndarray of size 2,
+            or cp.ndarray of shape (n_exc, 2)
         """
         if isinstance(ex_mat, list) and len(ex_mat) == 2:
             # case ex_line has been passed instead of ex_mat
-            ex_mat = np.array([ex_mat]).reshape((1, 2))  # build a 2D array
-        elif isinstance(ex_mat, np.ndarray) and ex_mat.size == 2:
-            # case ex_line np.ndarray has been passed instead of ex_mat
+            ex_mat = cp.array([ex_mat]).reshape((1, 2))  # build a 2D array
+        elif isinstance(ex_mat, cp.ndarray) and ex_mat.size == 2:
+            # case ex_line cp.ndarray has been passed instead of ex_mat
             ex_mat = ex_mat.reshape((-1, 2))
 
-        if not isinstance(ex_mat, np.ndarray):
+        if not isinstance(ex_mat, cp.ndarray):
             raise TypeError(f"Wrong type of {type(ex_mat)=}, expected an ndarray;")
         if ex_mat.ndim != 2 or ex_mat.shape[1] != 2:
             raise TypeError(f"Wrong shape of {ex_mat.shape=}, should be (n_exc, 2);")
 
         return ex_mat
 
-    def _check_meas_mat(self, meas_mat: np.ndarray) -> np.ndarray:
+    def _check_meas_mat(self, meas_mat: cp.ndarray) -> cp.ndarray:
         """
         Check measurement pattern
 
@@ -80,20 +81,20 @@ class PyEITProtocol:
         ----------
         n_exc : int
             number of excitations/stimulations
-        meas_pattern : np.ndarray, optional
+        meas_pattern : cp.ndarray, optional
            measurements pattern / subtract_row pairs [N, M] to check; shape (n_exc, n_meas_per_exc, 2)
 
         Returns
         -------
-        np.ndarray
+        cp.ndarray
             measurements pattern / subtract_row pairs [N, M]; shape (n_exc, n_meas_per_exc, 2)
 
         Raises
         ------
         TypeError
-            raised if meas_pattern is not a np.ndarray of shape (n_exc, : , 2)
+            raised if meas_pattern is not a cp.ndarray of shape (n_exc, : , 2)
         """
-        if not isinstance(meas_mat, np.ndarray):
+        if not isinstance(meas_mat, cp.ndarray):
             raise TypeError(f"Wrong type of {type(meas_mat)=}, expected an ndarray;")
         # test shape is something like (n_exc, :, 2)
         if meas_mat.ndim != 3 or meas_mat.shape[::2] != (self.n_exc, 2):
@@ -103,9 +104,9 @@ class PyEITProtocol:
 
         return meas_mat
 
-    def _check_keep_mat(self, keep_ba: np.ndarray) -> np.ndarray:
+    def _check_keep_mat(self, keep_ba: cp.ndarray) -> cp.ndarray:
         """check keep boolean array"""
-        if not isinstance(keep_ba, np.ndarray):
+        if not isinstance(keep_ba, cp.ndarray):
             raise TypeError(f"Wrong type of {type(keep_ba)=}, expected an ndarray;")
 
         return keep_ba
@@ -193,18 +194,18 @@ def create(
         raise TypeError(f"{type(dist_exc)=} should be a List[int]")
 
     _ex_mat = [build_exc_pattern_std(n_el, dist) for dist in dist_exc]
-    ex_mat = np.vstack(_ex_mat)
+    ex_mat = cp.vstack(_ex_mat)
 
     meas_mat, keep_ba = build_meas_pattern_std(ex_mat, n_el, step_meas, parser_meas)
     return PyEITProtocol(ex_mat, meas_mat, keep_ba)
 
 
 def build_meas_pattern_std(
-    ex_mat: np.ndarray,
+    ex_mat: cp.ndarray,
     n_el: int = 16,
     step: int = 1,
     parser: Union[str, List[str]] = "std",
-) -> np.ndarray:
+) -> cp.ndarray:
     """
     Build the measurement pattern (subtract_row-voltage pairs [N, M])
     for all excitations on boundary electrodes.
@@ -221,7 +222,7 @@ def build_meas_pattern_std(
 
     Parameters
     ----------
-    ex_mat : np.ndarray
+    ex_mat : cp.ndarray
         Nx2 array, [positive electrode, negative electrode]. ; shape (n_exc, 2)
     n_el : int, optional
         number of total electrodes, by default 16
@@ -240,9 +241,9 @@ def build_meas_pattern_std(
 
     Returns
     -------
-    diff_op: np.ndarray
+    diff_op: cp.ndarray
         measurements pattern / subtract_row pairs [N, M]; shape (n_exc, n_meas_per_exc, 2)
-    keep_ba: np.ndarray
+    keep_ba: cp.ndarray
         (n_exc*n_meas_per_exc,) boolean array
     """
     if not isinstance(parser, list):  # transform parser into list
@@ -252,11 +253,11 @@ def build_meas_pattern_std(
 
     diff_op, keep_ba = [], []
     for ex_line in ex_mat:
-        a, b = ex_line[0], ex_line[1]
+        a, b = ex_line[0].get(), ex_line[1].get()
         i0 = a if fmmu_rotate else 0
         m = (i0 + np.arange(n_el)) % n_el
         n = (m + step) % n_el
-        meas_pattern = np.vstack([n, m]).T
+        meas_pattern = cp.vstack([n, m]).T
 
         diff_keep = np.logical_and.reduce((m != a, m != b, n != a, n != b))
         keep_ba.append(diff_keep)
@@ -264,10 +265,10 @@ def build_meas_pattern_std(
             meas_pattern = meas_pattern[diff_keep]
         diff_op.append(meas_pattern)
 
-    return np.array(diff_op), np.array(keep_ba).ravel()
+    return cp.array(diff_op), cp.array(keep_ba).ravel()
 
 
-def build_exc_pattern_std(n_el: int = 16, dist: int = 1) -> np.ndarray:
+def build_exc_pattern_std(n_el: int = 16, dist: int = 1) -> cp.ndarray:
     """
     Generate scan matrix, `ex_mat` ( or excitation pattern), see notes
 
@@ -282,7 +283,7 @@ def build_exc_pattern_std(n_el: int = 16, dist: int = 1) -> np.ndarray:
 
     Returns
     -------
-    np.ndarray
+    cp.ndarray
         stimulation matrix; shape (n_exc, 2)
 
     Notes
@@ -307,4 +308,4 @@ def build_exc_pattern_std(n_el: int = 16, dist: int = 1) -> np.ndarray:
         range of the number of electrodes. In FEM applications, you should
         convert `ex_mat` to global index using the (global) `el_pos` parameters.
     """
-    return np.array([[i, np.mod(i + dist, n_el)] for i in range(n_el)])
+    return cp.array([[i, cp.mod(i + dist, n_el)] for i in range(n_el)])
