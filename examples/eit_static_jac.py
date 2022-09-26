@@ -17,7 +17,7 @@ from pyeit.mesh.wrapper import PyEITAnomaly_Circle
 # Mesh shape is specified with fd parameter in the instantiation, e.g:
 # from pyeit.mesh.shape import thorax
 # mesh_obj, el_pos = create(n_el, h0=0.05, fd=thorax)  # Default : fd=circle
-n_el = 64  # test fem_vectorize
+n_el = 16  # test fem_vectorize
 mesh_obj = create(n_el, h0=0.05)
 # set anomaly (altering the permittivity in the mesh)
 anomaly = [
@@ -35,7 +35,6 @@ perm = mesh_new.perm
 protocol_obj = protocol.create(n_el, dist_exc=1, step_meas=1, parser_meas="std")
 fwd = EITForward(mesh_obj, protocol_obj)
 v1 = fwd.solve_eit(perm=mesh_new.perm)
-
 # plot
 fig, ax = plt.subplots(figsize=(9, 6))
 im = ax.tripcolor(xx, yy, tri, cp.real(perm).get(), cmap="viridis")
@@ -44,14 +43,16 @@ for el in mesh_obj.el_pos.get():
 ax.axis("equal")
 ax.set_title(r"$\Delta$ Conductivities")
 
+
 # %% solve_eit using gaussian-newton (with regularization)
 # number of stimulation lines/patterns
+print("Setting up JAC")
 eit = jac.JAC(mesh_obj, protocol_obj)
 eit.setup(p=0.25, lamb=1.0, method="lm")
 # lamb = lamb * lamb_decay
-
+print("Starting reconstruction")
 start_time = datetime.datetime.now()
-ds = eit.gn(v1, lamb_decay=0.1, lamb_min=1e-5, maxiter=5, verbose=True)
+ds = eit.gn(v1, lamb_decay=0.1, lamb_min=1e-5, maxiter=20, verbose=True)
 print("Calculation time:", datetime.datetime.now() - start_time)
 
 # plot
