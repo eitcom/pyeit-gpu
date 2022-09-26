@@ -6,7 +6,12 @@
 
 `pyEIT` is purely python based, it can be installed and run without any difficulty.
 
-### 1.1 Install using pip or conda-forge (recommended)
+### 1.1 Pre-requisites
+
+- [Nvidia CUDA Toolkit](https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html) according to your system specifications
+- [Microsoft Visual Studio](https://visualstudio.microsoft.com/vs/older-downloads/) is required for the compilation process to work properly. You need to carefully choose it based on your system and the CUDA version you are running (see Nvidia documentation above).
+
+### 1.2 Install using pip or conda-forge (recommended)
 
 `pyEIT` is now availbale on `pypi` and `conda-forge`. It is purely python, which can be installed via
 ```bash
@@ -17,7 +22,7 @@ or
 $ conda install -c conda-forge pyeit
 ```
 
-### 1.2 Install from source code
+### 1.3 Install from source code
 
 You can track the git version of `pyEIT`, and use it locally by setting the `PYTHONPATH` variable.
 
