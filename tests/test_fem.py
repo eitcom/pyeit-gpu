@@ -154,12 +154,12 @@ class TestFem(unittest.TestCase):
         mesh = _mesh_obj()
         f_truth = cp.array([-0.27027027, 2.59459459, -0.93693694, 0.0])
         fwd = pyeit.eit.fem.Forward(mesh)
-        ex_line = cp.array([0, 1])
-        f = fwd.solve(ex_line)
+        ex_mat = cp.array([[0, 1]])
+        f = fwd.solve_vectorized(ex_mat)
 
         self.assertTrue(cp.allclose(f, f_truth))
         # test without passing any argument
-        f = fwd.solve()
+        f = fwd.solve_vectorized()
         self.assertTrue(isinstance(f, cp.ndarray))
 
     def test_solve_eit(self):
@@ -175,7 +175,8 @@ class TestFem(unittest.TestCase):
         f_truth = cp.array([-0.27027027, 2.59459459, -0.93693694, 0.0])
         vdiff_truth = f_truth[el_pos[1]] - f_truth[el_pos[0]]
         v_truth = vdiff_truth * cp.array([1, -1, -1, 1])
-        self.assertTrue(cp.allclose(v, v_truth))
+        val = cp.allclose(v, v_truth)
+        self.assertTrue(val)
 
     def test_compute_jac(self):
         """test solve using a simple mesh structure"""
