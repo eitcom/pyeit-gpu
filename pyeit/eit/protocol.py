@@ -308,4 +308,4 @@ def build_exc_pattern_std(n_el: int = 16, dist: int = 1) -> cp.ndarray:
         range of the number of electrodes. In FEM applications, you should
         convert `ex_mat` to global index using the (global) `el_pos` parameters.
     """
-    return cp.array([[i, cp.mod(i + dist, n_el)] for i in range(n_el)])
+    return cp.array([[i,(i + dist) % n_el] for i in range(n_el)])

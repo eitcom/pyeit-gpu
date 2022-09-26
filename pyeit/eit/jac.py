@@ -9,7 +9,9 @@ from __future__ import division, absolute_import, print_function, annotations
 
 from typing import Union
 import cupy as cp
+
 from .base import EitBase
+
 
 
 class JAC(EitBase):
@@ -259,11 +261,11 @@ class JAC(EitBase):
 
             # update
             d_k = cp.dot(h_mat, r0)
-            x0 = x0 - d_k
+            x0 = cp.subtract(x0, d_k)
 
             # convergence test
-            c = cp.linalg.norm(d_k) / x0_norm
-            if c < gtol:
+            c = cp.divide(cp.linalg.norm(d_k), x0_norm)
+            if cp.less(c, gtol):
                 break
 
             if verbose:
@@ -271,8 +273,8 @@ class JAC(EitBase):
 
             # update regularization parameter
             # lambda can be given in user defined decreasing lists
-            lamb *= lamb_decay
-            lamb = max(lamb, lamb_min)
+            lamb = cp.multiply(lamb, lamb_decay)
+            lamb = cp.maximum(lamb, lamb_min)
         return x0
 
     def project(self, ds: cp.ndarray) -> cp.ndarray:

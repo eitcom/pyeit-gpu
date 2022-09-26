@@ -20,18 +20,18 @@ class DISTMESH:
     """class for distmesh"""
 
     def __init__(
-        self,
-        fd,
-        fh,
-        h0=0.1,
-        p_fix=None,
-        bbox=None,
-        density_ctrl_freq=30,
-        deltat=0.1,
-        dptol=0.001,
-        ttol=0.1,
-        Fscale=1.2,
-        verbose=False,
+            self,
+            fd,
+            fh,
+            h0=0.1,
+            p_fix=None,
+            bbox=None,
+            density_ctrl_freq=30,
+            deltat=0.1,
+            dptol=0.001,
+            ttol=0.1,
+            Fscale=1.2,
+            verbose=False,
     ):
         """initial distmesh class
 
@@ -172,7 +172,7 @@ class DISTMESH:
         # density control on bars
         hbars = self.fh((bars_a + bars_b) / 2.0).reshape((-1, 1))
         # L0 : desired lengths (Fscale matters!)
-        L0 = hbars * self.Fscale * sqrt(cp.sum(L**2) / cp.sum(hbars**2))
+        L0 = hbars * self.Fscale * sqrt(cp.sum(L ** 2) / cp.sum(hbars ** 2))
 
         return L, L0, barvec
 
@@ -197,12 +197,11 @@ class DISTMESH:
             cols = cp.dot(cp.ones(cp.shape(F)), cp.array([[0, 1, 2, 0, 1, 2]]))
         # sum nodes at duplicated locations using sparse matrices
         Ftot = csr_matrix(
-            (data.reshape(-1), [rows.reshape(-1), cols.reshape(-1)]),
+            (data.reshape(-1), cp.array((rows.reshape(-1), cols.reshape(-1)))),
             shape=(self.N, self.n_dim),
-        )
-        Ftot = Ftot.toarray()
+        ).toarray()
         # zero out forces at fixed points, as they do not move
-        Ftot[0 : len(self.pfix)] = 0
+        Ftot[0: len(self.pfix)] = 0
 
         return Ftot
 
@@ -341,7 +340,7 @@ def remove_duplicate_nodes(p, pfix, geps):
 
 
 def build(
-    fd, fh, pfix=None, bbox=None, h0=0.1, densityctrlfreq=10, maxiter=500, verbose=False
+        fd, fh, pfix=None, bbox=None, h0=0.1, densityctrlfreq=10, maxiter=500, verbose=False
 ):
     """main function for distmesh
 
@@ -414,6 +413,7 @@ def build(
         verbose=verbose,
     )
 
+    rang_ = cp.arange(0, maxiter)
     # now iterate to push to equilibrium
     for i in range(maxiter):
         if dm.is_retriangulate():
@@ -425,7 +425,7 @@ def build(
 
         # density control
         if not mode_3D:
-            if (i % densityctrlfreq) == 0 and (L0 > 2 * L).any():
+            if cp.logical_and(cp.equal(cp.mod(i, densityctrlfreq), 0), (cp.multiply(cp.greater(L0, 2), L)).any()):
                 dm.density_control(L, L0)
                 # continue to triangulate
                 continue
@@ -434,7 +434,7 @@ def build(
         Ftot = dm.bar_force(L, L0, barvec)
 
         # update p
-        converge = dm.move_p(cp.asarray(Ftot))
+        converge = dm.move_p(Ftot)
         # the stopping ctriterion (movements interior are small)
         if converge:
             break

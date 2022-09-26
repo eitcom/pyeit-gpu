@@ -10,6 +10,7 @@ from typing import Tuple, Union
 import cupy as cp
 import cupy.linalg as cla
 import warnings
+
 from cupyx.scipy import sparse
 import cupyx.scipy.sparse.linalg
 from cupyx.scipy.sparse import csr_matrix
@@ -88,6 +89,40 @@ class Forward:
         # solve
         return sparse.linalg.spsolve(self.kg, b)
 
+    def solve_vectorized(self, ex_mat: cp.ndarray = None) -> cp.ndarray:
+        """
+        Calculate and compute the potential distribution (complex-valued)
+        corresponding to the permittivity distribution `perm ` for a
+        excitation contained specified by `ex_line` (Neumann BC)
+
+        Parameters
+        ----------
+        ex_line : cp.ndarray, optional
+            stimulation/excitation matrix, of shape (2,)
+
+        Returns
+        -------
+        cp.ndarray
+            potential on nodes ; shape (n_pts,)
+
+        Notes
+        -----
+        Currently, only simple electrode model is supported,
+        CEM (complete electrode model) is under development.
+        """
+
+        # using natural boundary conditions
+        b = cp.zeros((ex_mat.shape[0] if ex_mat is not None else 1, self.mesh.n_nodes))
+        b[cp.arange(b.shape[0])[:, None], self.mesh.el_pos[ex_mat]] = [1, -1]
+
+        result = cp.empty((ex_mat.shape[0] if ex_mat is not None else 1, self.kg.shape[0]))
+
+        for i in range(result.shape[0]):
+            result[i] = sparse.linalg.spsolve(self.kg, b[i])
+
+        # solve
+        return result
+
 
 class EITForward(Forward):
     """EIT Forward simulation, depends on mesh and protocol"""
@@ -119,7 +154,7 @@ class EITForward(Forward):
         self.protocol = protocol
 
     def _check_mesh_protocol_compatibility(
-        self, mesh: PyEITMesh, protocol: PyEITProtocol
+            self, mesh: PyEITMesh, protocol: PyEITProtocol
     ) -> None:
         """
         Check if mesh and protocol are compatible
@@ -149,8 +184,8 @@ The mesh use {m_n_el} electrodes, and the protocol use only {p_n_el} electrodes 
             )
 
     def solve_eit(
-        self,
-        perm: Union[int, float, cp.ndarray] = None,
+            self,
+            perm: Union[int, float, cp.ndarray] = None,
     ) -> cp.ndarray:
         """
         EIT simulation, generate forward v measurements
@@ -170,16 +205,22 @@ The mesh use {m_n_el} electrodes, and the protocol use only {p_n_el} electrodes 
         v = cp.zeros(
             (self.protocol.n_exc, self.protocol.n_meas), dtype=self.mesh.perm.dtype
         )
-        for i, ex_line in enumerate(self.protocol.ex_mat):
-            f = self.solve(ex_line)
-            v[i] = subtract_row(f[self.mesh.el_pos], self.protocol.meas_mat[i])
 
-        return cp.asarray(v.reshape(-1))
+        # TODO Vectorize this part
+        # for i, ex_line in enumerate(self.protocol.ex_mat):
+        #     f = self.solve(ex_line)
+        #     v[i] = subtract_row(f[self.mesh.el_pos], self.protocol.meas_mat[i])
+
+        f = self.solve_vectorized(self.protocol.ex_mat)
+        for i in range(self.protocol.ex_mat.shape[0]):
+            v[i] = subtract_row(f[i, self.mesh.el_pos], self.protocol.meas_mat[i])
+
+        return v.reshape(-1)
 
     def compute_jac(
-        self,
-        perm: Union[int, float, cp.ndarray] = None,
-        normalize: bool = False,
+            self,
+            perm: Union[int, float, cp.ndarray] = None,
+            normalize: bool = False,
     ) -> Tuple[cp.ndarray, cp.ndarray]:
         """
         Compute the Jacobian matrix and initial boundary voltage meas.
@@ -213,15 +254,15 @@ The mesh use {m_n_el} electrodes, and the protocol use only {p_n_el} electrodes 
         v = cp.zeros(
             (self.protocol.n_exc, self.protocol.n_meas), dtype=self.mesh.perm.dtype
         )
+
         for i, ex_line in enumerate(self.protocol.ex_mat):
             f = self.solve(ex_line)
             v[i] = subtract_row(f[self.mesh.el_pos], self.protocol.meas_mat[i])
             ri = subtract_row(r_el, self.protocol.meas_mat[i])
             # Build Jacobian matrix column wise (element wise)
             #    Je = Re*Ke*Ve = (nex3) * (3x3) * (3x1)
-            for (e, ijk) in enumerate(self.mesh.element.get()):
-                tmp = cp.dot(ri[:, ijk], self.se[e])
-                _jac[i, :, e] = cp.dot(tmp, f[ijk])
+            for (e, ijk) in enumerate(self.mesh.element):
+                _jac[i, :, e] = cp.dot(cp.dot(ri[:, ijk], self.se[e]), f[ijk])
         # measurement protocol
         jac = cp.vstack(_jac)
         v0 = v.reshape(-1)
@@ -232,8 +273,8 @@ The mesh use {m_n_el} electrodes, and the protocol use only {p_n_el} electrodes 
         return jac, v0
 
     def compute_b_matrix(
-        self,
-        perm: Union[int, float, cp.ndarray] = None,
+            self,
+            perm: Union[int, float, cp.ndarray] = None,
     ) -> cp.ndarray:
         """
         Compute back-projection mappings (smear matrix)
@@ -292,7 +333,7 @@ def _smear(f: cp.ndarray, fb: cp.ndarray, pairs: cp.ndarray) -> cp.ndarray:
 
 
 def smear_nd(
-    f: cp.ndarray, fb: cp.ndarray, meas_pattern: cp.ndarray, new: bool = False
+        f: cp.ndarray, fb: cp.ndarray, meas_pattern: cp.ndarray, new: bool = False
 ) -> cp.ndarray:
     """
     Build smear matrix B for bp
@@ -362,8 +403,30 @@ def subtract_row(v: cp.ndarray, meas_pattern: cp.ndarray) -> cp.ndarray:
     return v[meas_pattern[:, 0]] - v[meas_pattern[:, 1]]
 
 
+def subtract_row_vectorized(v: cp.ndarray, meas_pattern: cp.ndarray) -> cp.ndarray:
+    """
+    Build the voltage differences on axis=1 using the meas_pattern.
+    v_diff[k] = v[i, :] - v[j, :]
+
+    New implementation 33% less computation time
+
+    Parameters
+    ----------
+    v: cp.ndarray
+        Nx1 boundary measurements vector or NxM matrix; shape (n_exc,n_el,1)
+    meas_pattern: cp.ndarray
+        Nx2 subtract_row pairs; shape (n_exc, n_meas, 2)
+
+    Returns
+    -------
+    cp.ndarray
+        difference measurements v_diff
+    """
+    return v[:, meas_pattern[:, 0]] - v[:, meas_pattern[:, 1]]
+
+
 def assemble(
-    ke: cp.ndarray, tri: cp.ndarray, perm: cp.ndarray, n_pts: int, ref: int = 0
+        ke: cp.ndarray, tri: cp.ndarray, perm: cp.ndarray, n_pts: int, ref: int = 0
 ) -> csr_matrix:
     """
     Assemble the stiffness matrix (using sparse matrix)

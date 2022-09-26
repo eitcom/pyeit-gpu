@@ -317,10 +317,9 @@ def create(
         if fd != shape.ball:
             bbox = cp.array([[-1, -1], [1, 1]])
         else:
-            bbox = [[-1.2, -1.2, -1.2], [1.2, 1.2, 1.2]]
+            bbox = cp.array([[-1.2, -1.2, -1.2], [1.2, 1.2, 1.2]])
 
     # list is converted to Numpy array so we can use it then (calling shape method..)
-    bbox = cp.array(bbox)
     n_dim = bbox.shape[1]  # bring dimension
 
     # infer dim
