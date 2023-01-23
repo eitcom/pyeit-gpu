@@ -1,4 +1,4 @@
-name: pyeit-environment
+name: pyeit-gpu-environment
 channels:
   - defaults
   - conda-forge
@@ -13,3 +13,5 @@ dependencies:
   - shapely
   - trimesh
   - "imageio>=2.19"
+  - pip :
+      - tensorflow<2.11
